@@ -4,7 +4,7 @@ import { performance } from "perf_hooks";
 import * as fs from "fs";
 
 const sampleDistanceSeconds = 60;
-const maxAgeHours = 48;
+const maxAgeHours = 12;
 
 const watchingStories = new Set<number>();
 const fileprefix = `out/newstories_${dateformat("yyyy-mm-dd_HH-MM-ss")}`;
