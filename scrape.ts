@@ -1,11 +1,15 @@
 import fetch from "node-fetch";
 import * as dateformat from "dateformat";
 import { performance } from "perf_hooks";
+import * as fs from "fs";
 
 const sampleDistanceSeconds = 60;
 const maxAgeHours = 48;
 
 const watchingStories = new Set<number>();
+const fileprefix = `out/newstories_${dateformat("yyyy-mm-dd_HH-MM-ss")}`;
+const dataStream = fs.createWriteStream(`${fileprefix}.tsv`, { flags: "a" });
+const logStream = fs.createWriteStream(`${fileprefix}.log`, { flags: "a" });
 
 async function main() {
   printerr(`SampleDistance: ${sampleDistanceSeconds}s`);
@@ -137,11 +141,12 @@ function currentTimestamp(): number {
 }
 
 function println(str: string) {
-  process.stdout.write(str + "\n");
+  dataStream.write(str + "\n");
 }
 
 function printerr(str: string) {
   const timestamp = dateformat("yyyy-mm-dd HH:MM:ss");
+  logStream.write(`[${timestamp}] ${str}\n`);
   process.stderr.write(`[${timestamp}] ${str}\n`);
 }
 
