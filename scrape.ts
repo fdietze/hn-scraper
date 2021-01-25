@@ -87,7 +87,7 @@ async function update() {
       Array.from(watchingStories).map(async (itemId) => {
         const sample = await getSample(itemId, rankMap);
         const ageHours = (sample.sample_time - sample.submission_time) / 3600;
-        if (ageHours <= maxAgeHours) {
+        if (ageHours <= maxAgeHours || rankMap.has(itemId)) {
           printSample(sample);
         } else {
           watchingStories.delete(itemId);
