@@ -4,7 +4,7 @@
   "description": "",
   "main": "index.ts",
   "scripts": {
-    "start": "ts-node scrape.ts > \"out/$(date +\"newstories-%Y-%m-%d_%R.tsv\")\""
+    "start": "ts-node scrape.ts"
   },
   "author": "",
   "license": "MIT",
