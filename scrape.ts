@@ -3,17 +3,21 @@ import * as dateformat from "dateformat";
 import { performance } from "perf_hooks";
 import * as fs from "fs";
 
-const sampleDistanceSeconds = 60;
-const maxAgeHours = 12;
+// https://github.com/HackerNews/API
 
-const watchingStories = new Set<number>();
+const sampleDistanceSeconds = 60;
+const maxRank = 90;
+
 const fileprefix = `out/newstories_${dateformat("yyyy-mm-dd_HH-MM-ss")}`;
 const dataStream = fs.createWriteStream(`${fileprefix}.tsv`, { flags: "a" });
 const logStream = fs.createWriteStream(`${fileprefix}.log`, { flags: "a" });
 
+const storyEndpoints = ["top", "new", "best", "ask", "show", "job"];
+
 async function main() {
+  printerr(`writing to: ${fileprefix}.tsv`);
   printerr(`SampleDistance: ${sampleDistanceSeconds}s`);
-  printerr(`Follow stories: ${maxAgeHours}h`);
+  printerr(`Follow stories maxRank: ${maxRank}`);
   printerr("Starting Scraper...");
   printHeader();
   update();
@@ -35,10 +39,15 @@ interface ApiItem {
 interface Sample {
   id: number;
   score: number;
-  rank?: number;
   descendants: number;
   submission_time: number;
   sample_time: number;
+  topRank?: number;
+  newRank?: number;
+  bestRank?: number;
+  askRank?: number;
+  showRank?: number;
+  jobRank?: number;
 }
 
 function printHeader() {
@@ -46,10 +55,10 @@ function printHeader() {
     [
       "id",
       "score",
-      "rank",
       "descendants",
       "submission_time",
       "sample_time",
+      ...storyEndpoints.map((e) => `${e}Rank`),
     ].join("\t")
   );
 }
@@ -59,23 +68,33 @@ function printSample(s: Sample) {
     [
       s.id,
       s.score,
-      s.rank || "\\N",
       s.descendants,
       s.submission_time,
       s.sample_time,
+      s.topRank || "\\N",
+      s.newRank || "\\N",
+      s.bestRank || "\\N",
+      s.askRank || "\\N",
+      s.showRank || "\\N",
+      s.jobRank || "\\N",
     ].join("\t")
   );
 }
 
 async function getSample(
   itemId: number,
-  rankMap: Map<number, number>
+  rankMaps: Array<{ endpoint: string; rankMap: Map<number, number> }>
 ): Promise<Sample> {
   const item = await getItem(itemId);
+  if (item == null) throw Error(`Could not get item: ${itemId}`);
+  const ranks = {};
+  rankMaps.forEach(
+    ({ endpoint, rankMap }) => (ranks[`${endpoint}Rank`] = rankMap.get(itemId))
+  );
   return {
     id: item.id,
     score: item.score,
-    rank: rankMap.get(itemId),
+    ...ranks,
     descendants: item.descendants,
     submission_time: item.time,
     sample_time: currentTimestamp(),
@@ -85,21 +104,31 @@ async function getSample(
 async function update() {
   try {
     const startTime = performance.now();
-    const [newIds, rankMap] = await Promise.all([getNewIds(), getRankMap()]);
-    newIds.forEach((itemId) => watchingStories.add(itemId));
-    await Promise.all(
-      Array.from(watchingStories).map(async (itemId) => {
-        const sample = await getSample(itemId, rankMap);
-        const ageHours = (sample.sample_time - sample.submission_time) / 3600;
-        if (ageHours <= maxAgeHours || rankMap.has(itemId)) {
-          printSample(sample);
-        } else {
-          watchingStories.delete(itemId);
+    const rankMaps: Array<{
+      endpoint: string;
+      rankMap: Map<number, number>;
+    }> = await Promise.all(
+      storyEndpoints.map((endpoint) =>
+        getIdsFromStoryEndpoint(endpoint).then((ids) => ({
+          endpoint,
+          rankMap: getRankMap(ids, maxRank),
+        }))
+      )
+    );
+    const itemIds: Array<number> = Array.from(
+      new Set(rankMaps.flatMap(({ rankMap }) => Array.from(rankMap.keys())))
+    );
+    Promise.all(
+      itemIds.map(async (itemId) => {
+        try {
+          printSample(await getSample(itemId, rankMaps));
+        } catch (error) {
+          printerr(error);
         }
       })
     );
     printerr(
-      `Updated ${watchingStories.size} stories in ${Math.round(
+      `Updated ${itemIds.length} stories in ${Math.round(
         performance.now() - startTime
       )}ms`
     );
@@ -108,22 +137,17 @@ async function update() {
   }
 }
 
-async function getNewIds(): Promise<Array<number>> {
+async function getIdsFromStoryEndpoint(
+  endpoint: string
+): Promise<Array<number>> {
   return (await (
-    await fetch("https://hacker-news.firebaseio.com/v0/newstories.json")
+    await fetch(`https://hacker-news.firebaseio.com/v0/${endpoint}stories.json`)
   ).json()) as Array<number>;
 }
 
-async function getTopIds(): Promise<Array<number>> {
-  return (await (
-    await fetch("https://hacker-news.firebaseio.com/v0/topstories.json")
-  ).json()) as Array<number>;
-}
-
-async function getRankMap(): Promise<Map<number, number>> {
-  const top = await getTopIds();
+function getRankMap(ids: Array<number>, maxRank: number): Map<number, number> {
   const map = new Map<number, number>();
-  top.forEach((id, index) => {
+  ids.slice(0, maxRank).forEach((id, index) => {
     const rank = index + 1;
     map.set(id, rank);
   });
