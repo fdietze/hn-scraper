@@ -14,6 +14,7 @@ const logStream = fs.createWriteStream(`${fileprefix}.log`, { flags: "a" });
 
 const storyEndpoints = ["top", "new", "best", "ask", "show", "job"];
 
+let tick = 0;
 async function main() {
   printerr(`writing to: ${fileprefix}.tsv`);
   printerr(`SampleDistance: ${sampleDistanceSeconds}s`);
@@ -42,6 +43,7 @@ interface Sample {
   descendants: number;
   submission_time: number;
   sample_time: number;
+  tick: number;
   topRank?: number;
   newRank?: number;
   bestRank?: number;
@@ -58,6 +60,7 @@ function printHeader() {
       "descendants",
       "submission_time",
       "sample_time",
+      "tick",
       ...storyEndpoints.map((e) => `${e}Rank`),
     ].join("\t")
   );
@@ -71,6 +74,7 @@ function printSample(s: Sample) {
       s.descendants,
       s.submission_time,
       s.sample_time,
+      s.tick,
       s.topRank || "\\N",
       s.newRank || "\\N",
       s.bestRank || "\\N",
@@ -82,6 +86,7 @@ function printSample(s: Sample) {
 }
 
 async function getSample(
+  tick: number,
   itemId: number,
   rankMaps: Array<{ endpoint: string; rankMap: Map<number, number> }>
 ): Promise<Sample> {
@@ -98,6 +103,7 @@ async function getSample(
     descendants: item.descendants,
     submission_time: item.time,
     sample_time: currentTimestamp(),
+    tick: tick,
   };
 }
 
@@ -121,20 +127,21 @@ async function update() {
     Promise.all(
       itemIds.map(async (itemId) => {
         try {
-          printSample(await getSample(itemId, rankMaps));
+          printSample(await getSample(tick, itemId, rankMaps));
         } catch (error) {
           printerr(error);
         }
       })
     );
     printerr(
-      `Updated ${itemIds.length} stories in ${Math.round(
+      `${tick}: Updated ${itemIds.length} stories in ${Math.round(
         performance.now() - startTime
       )}ms`
     );
   } catch (error) {
     printerr(error);
   }
+  tick += 1;
 }
 
 async function getIdsFromStoryEndpoint(
